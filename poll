@@ -1,0 +1,38 @@
+#!/bin/bash
+
+jobid="$1"
+workdir="$2"
+job="$3"
+
+if [[ -z "$SQMOCKTEST" ]]; then
+    ENDPT="http://169.254.169.254"
+else
+    ENDPT="http://localhost:1338"
+fi
+
+TOKEN=`curl -X PUT "$ENDPT/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"`
+
+while sleep 5; do
+    HTTP_CODE=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s -w %{http_code} -o /dev/null $ENDPT/latest/meta-data/spot/instance-action)
+
+    if [[ "$HTTP_CODE" -eq 401 ]] ; then
+        echo 'Refreshing Authentication Token'
+        TOKEN=`curl -X PUT "$ENDPT/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 30"` 
+    elif [[ "$HTTP_CODE" -eq 200 ]] ; then
+        source "$workdir"/bg_switch
+        echo -e "$workdir interrupted: $(date) | $(date +%s)" >>$SQDIR/var/timings.log
+        squeue -p $SQQUEUE -h -o "%i" | grep -v "$jobid" >$SQDIR/var/jobs-on-hold 
+        readarray -t JOBSONHOLD <$SQDIR/var/jobs-on-hold
+        for j in ${JOBSONHOLD[@]}; do
+            scontrol hold $j
+            echo -e "$j held by user." >>$SQDIR/var/interrupt.log
+            # take care not to overwhelm slurm control daemon
+            sleep 0.05
+        done
+        echo -e "$workdir\n$job\n$SLURM_JOB_NUM_NODES\n$(lscpu | grep '^CPU(s)' | awk '{print $NF}')" >$SQDIR/var/restart-queue/$jobid
+        echo -e "$workdir $job $jobid interrupted: $(date) | $(date +%s)" >>$SQDIR/var/interrupt.log
+        exit
+    else
+        echo 'Not Interrupted'
+    fi
+done

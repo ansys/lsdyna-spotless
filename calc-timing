@@ -1,0 +1,55 @@
+#!/bin/bash
+tlog=$1
+declare -A JT
+
+declare -i qs=2000000000 qe=0 qd=0 ql=0
+while read l; do
+    job="${l%% *}"
+    ts="${l#* | }"
+    if [[ -z "$job" || -z "$ts" ]]; then
+        continue
+    fi
+
+    if [[ $ts -gt $qe ]]; then
+        qe=$ts
+    fi
+    if [[ $qs -gt $ts ]]; then
+        qs=$ts
+    fi
+
+    if [[ -z "${JT[$job]}" ]]; then
+        JT[$job]=0
+    fi
+    if [[ "$l" =~ " started" ]]; then
+        JT[$job]=$(bc <<<${JT[$job]}" - $ts")
+    fi
+    if [[ "$l" =~ "stopped" ]]; then
+        JT[$job]=$(bc <<<${JT[$job]}" + $ts")
+    fi
+done <"$tlog"
+
+for j in "${!JT[@]}"; do
+    info=""
+    builtin cd $j &>/dev/null
+    if [[ ! -f d3hsp ]]; then
+        echo "job $j FAILED to start"
+    elif tail $(ls -t d3hsp* | head -1) | grep -q "$pat"; then
+        if [[ -f d3hsp01 ]]; then
+            info="after interrupt(s)"
+        else
+            info="uninterrupted"
+        fi
+    else
+        echo "job $j FAILED to finish"
+    fi
+    builtin cd - &>/dev/null
+
+    if [[ ! -z "$info" ]]; then
+        echo "job $j finished in "${JT[$j]}" seconds, $info."
+        ql=$(bc <<<"$ql+ 1")
+        qd=$(bc <<<"$qd+"${JT[$j]})
+    fi
+done
+wct=$(bc <<<"$qe-$qs")
+echo -e "$ql jobs finished and they finished in $qd seconds in CPU time"
+echo -e "Wall clock time: $wct seconds elapsed"

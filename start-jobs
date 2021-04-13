@@ -1,0 +1,27 @@
+#!/bin/bash
+
+nodes=$1
+tpn=$2
+script=$3
+
+shift 3
+
+
+if [[ $(squeue -p $SQQUEUE | wc -l) -eq 1 ]]; then
+    $SQDIR/bin/job-restarter &>/dev/null &
+
+    if [[ -f $SQDIR/var/interrupt.log ]]; then
+        mv $SQDIR/var/interrupt.log $SQDIR/var/interrupt.log.bak 
+    fi
+
+    echo -e "Job queue started: $(date) | $(date +%s)" | tee $SQDIR/var/interrupt.log
+fi
+
+echo -e "Submitting ${#@} jobs..."
+for d in $@; do
+    builtin cd $d &>/dev/null
+    rm d3dump* d3hsp* &>/dev/null
+
+    sbatch -p $SQQUEUE --nodes=$nodes --ntasks-per-node=$tpn $script
+    builtin cd - &>/dev/null
+done

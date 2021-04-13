@@ -1,0 +1,20 @@
+#!/bin/bash
+
+squeue -p $SQQUEUE -h -o "%i" >$SQDIR/var/jobs-on-hold 
+echo "Stopping jobs: $(wc -l $SQDIR/var/jobs-on-hold | cut -d\  -f1)"
+readarray -t JOBSONHOLD <$SQDIR/var/jobs-on-hold
+for j in ${JOBSONHOLD[@]}; do
+    scancel -p $SQQUEUE $j
+    echo "cancelled job $j"
+    # take care not to overwhelm slurm control daemon
+    sleep 0.1
+done
+
+killall -q job-restarter
+
+echo -e "Job queue stopped: $(date) | $(date +%s)" >>$SQDIR/var/interrupt.log
+
+rm $SQDIR/var/restart-done/* &>/dev/null
+rm $SQDIR/var/restart-queue/* &>/dev/null
+mv $SQDIR/var/timings.log $SQDIR/var/timings.log.bak &>/dev/null
+mv $SQDIR/var/interrupt.log $SQDIR/var/interrupt.log.bak &>/dev/null

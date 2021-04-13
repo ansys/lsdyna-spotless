@@ -1,0 +1,24 @@
+#!/bin/bash
+
+while true; do
+    for jid in $(ls $SQDIR/var/restart-queue/*); do
+        readarray -t ARR <$jid
+        workdir=${ARR["0"]}
+        jobfile=${ARR["1"]}
+        nodes=${ARR["2"]}
+        tpn=${ARR["3"]}
+        echo "restarted job: $jobfile"
+        cd $workdir
+        sbatch -p $SQQUEUE --chdir=$workdir --nodes=$nodes --ntasks-per-node=$tpn --begin=now+150 $jobfile
+        echo -e "$workdir $jobfile $jid restarted: $(date -d 'now + 150 seconds') | $(date -d 'now + 150 seconds' +%s)" >>$SQDIR/var/interrupt.log
+        mv $jid $SQDIR/var/restart-done/
+        jobRelease="true"
+    done
+
+    if [[ "$jobRelease" == "true" ]]; then
+        at -f $SQDIR/bin/job-release now+4minutes
+        jobRelease=""
+    fi
+
+    sleep 150
+done

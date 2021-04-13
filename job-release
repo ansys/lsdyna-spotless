@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# release held jobs
+if [[ -f $SQDIR/var/jobs-on-hold ]]; then
+    readarray -t JOBSONHOLD <$SQDIR/var/jobs-on-hold
+    for j in ${JOBSONHOLD[@]}; do
+        scontrol release $j
+    done
+    rm $SQDIR/var/jobs-on-hold
+fi
